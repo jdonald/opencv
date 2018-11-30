@@ -190,7 +190,7 @@ void traceOpenCLCheck(cl_int status, const char* message)
         CV_OCL_TRACE_CHECK_RESULT(check_result, msg); \
         if (check_result != CL_SUCCESS) \
         { \
-            if (0) { const char* msg_ = (msg); (void)msg_; /* ensure const char* type (cv::String without c_str()) */ } \
+            if (0) { const char* msg_ = (msg); CV_UNUSED(msg_); /* ensure const char* type (cv::String without c_str()) */ } \
             cv::String error_msg = CV_OCL_API_ERROR_MSG(check_result, msg); \
             CV_Error(Error::OpenCLApiCallError, error_msg); \
         } \
@@ -210,7 +210,7 @@ void traceOpenCLCheck(cl_int status, const char* message)
         CV_OCL_TRACE_CHECK_RESULT(check_result, msg); \
         if (check_result != CL_SUCCESS && isRaiseError()) \
         { \
-            if (0) { const char* msg_ = (msg); (void)msg_; /* ensure const char* type (cv::String without c_str()) */ } \
+            if (0) { const char* msg_ = (msg); CV_UNUSED(msg_); /* ensure const char* type (cv::String without c_str()) */ } \
             cv::String error_msg = CV_OCL_API_ERROR_MSG(check_result, msg); \
             CV_Error(Error::OpenCLApiCallError, error_msg); \
         } \
@@ -237,6 +237,20 @@ static const bool CV_OPENCL_DISABLE_BUFFER_RECT_OPERATIONS = utils::getConfigura
         false
 #endif
 );
+
+static const String getBuildExtraOptions()
+{
+    static String param_buildExtraOptions;
+    static bool initialized = false;
+    if (!initialized)
+    {
+        param_buildExtraOptions = utils::getConfigurationParameterString("OPENCV_OPENCL_BUILD_EXTRA_OPTIONS", "");
+        initialized = true;
+        if (!param_buildExtraOptions.empty())
+            CV_LOG_WARNING(NULL, "OpenCL: using extra build options: '" << param_buildExtraOptions << "'");
+    }
+    return param_buildExtraOptions;
+}
 
 #endif // HAVE_OPENCL
 
@@ -880,11 +894,11 @@ bool useOpenCL()
     CoreTLSData* data = getCoreTlsData().get();
     if( data->useOpenCL < 0 )
     {
-        CV_TRY
+        try
         {
             data->useOpenCL = (int)(haveOpenCL() && Device::getDefault().ptr() && Device::getDefault().available()) ? 1 : 0;
         }
-        CV_CATCH_ALL
+        catch (...)
         {
             data->useOpenCL = 0;
         }
@@ -3078,7 +3092,7 @@ bool Kernel::run(int dims, size_t _globalsize[], size_t _localsize[],
             dims == 1 ? 64 : dims == 2 ? (i == 0 ? 256 : 8) : dims == 3 ? (8>>(int)(i>0)) : 1;
         CV_Assert( val > 0 );
         total *= _globalsize[i];
-        if (_globalsize[i] == 1)
+        if (_globalsize[i] == 1 && !_localsize)
             val = 1;
         globalsize[i] = divUp(_globalsize[i], (unsigned int)val) * val;
     }
@@ -3522,6 +3536,9 @@ struct Program::Impl
                 buildflags = joinBuildOptions(buildflags, " -D AMD_DEVICE");
             else if (device.isIntel())
                 buildflags = joinBuildOptions(buildflags, " -D INTEL_DEVICE");
+            const String param_buildExtraOptions = getBuildExtraOptions();
+            if (!param_buildExtraOptions.empty())
+                buildflags = joinBuildOptions(buildflags, param_buildExtraOptions);
         }
         compile(ctx, src_, errmsg);
     }
@@ -4762,6 +4779,10 @@ public:
 
     void deallocate_(UMatData* u) const
     {
+#ifdef _WIN32
+        if (cv::__termination)  // process is not in consistent state (after ExitProcess call) and terminating
+            return;             // avoid any OpenCL calls
+#endif
         if(u->tempUMat())
         {
             CV_Assert(u->origdata);

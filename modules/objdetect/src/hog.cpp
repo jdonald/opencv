@@ -138,6 +138,8 @@ void HOGDescriptor::setSVMDetector(InputArray _svmDetector)
 
 bool HOGDescriptor::read(FileNode& obj)
 {
+    CV_Assert(!obj["winSize"].empty());
+
     if( !obj.isMap() )
         return false;
     FileNodeIterator it = obj["winSize"].begin();
@@ -163,8 +165,9 @@ bool HOGDescriptor::read(FileNode& obj)
     FileNode vecNode = obj["SVMDetector"];
     if( vecNode.isSeq() )
     {
-        vecNode >> svmDetector;
-        CV_Assert(checkDetectorSize());
+        std::vector<float> _svmDetector;
+        vecNode >> _svmDetector;
+        setSVMDetector(_svmDetector);
     }
     return true;
 }
@@ -217,7 +220,7 @@ void HOGDescriptor::copyTo(HOGDescriptor& c) const
     c.histogramNormType = histogramNormType;
     c.L2HysThreshold = L2HysThreshold;
     c.gammaCorrection = gammaCorrection;
-    c.svmDetector = svmDetector;
+    c.setSVMDetector(svmDetector);
     c.nlevels = nlevels;
     c.signedGradient = signedGradient;
 }
@@ -236,7 +239,7 @@ inline float32x4_t vsetq_f32(float f0, float f1, float f2, float f3)
 void HOGDescriptor::computeGradient(const Mat& img, Mat& grad, Mat& qangle,
     Size paddingTL, Size paddingBR) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     CV_Assert( img.type() == CV_8U || img.type() == CV_8UC3 );
 
@@ -1586,7 +1589,7 @@ static bool ocl_compute(InputArray _img, Size win_stride, std::vector<float>& _d
 void HOGDescriptor::compute(InputArray _img, std::vector<float>& descriptors,
     Size winStride, Size padding, const std::vector<Point>& locations) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     if( winStride == Size() )
         winStride = cellSize;
@@ -1653,7 +1656,7 @@ void HOGDescriptor::detect(const Mat& img,
     std::vector<Point>& hits, std::vector<double>& weights, double hitThreshold,
     Size winStride, Size padding, const std::vector<Point>& locations) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     hits.clear();
     weights.clear();
@@ -1766,7 +1769,7 @@ void HOGDescriptor::detect(const Mat& img,
 void HOGDescriptor::detect(const Mat& img, std::vector<Point>& hits, double hitThreshold,
     Size winStride, Size padding, const std::vector<Point>& locations) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     std::vector<double> weightsV;
     detect(img, hits, weightsV, hitThreshold, winStride, padding, locations);
@@ -2050,7 +2053,7 @@ void HOGDescriptor::detectMultiScale(
     double hitThreshold, Size winStride, Size padding,
     double scale0, double finalThreshold, bool useMeanshiftGrouping) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     double scale = 1.;
     int levels = 0;
@@ -2105,7 +2108,7 @@ void HOGDescriptor::detectMultiScale(InputArray img, std::vector<Rect>& foundLoc
     double hitThreshold, Size winStride, Size padding,
     double scale0, double finalThreshold, bool useMeanshiftGrouping) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     std::vector<double> foundWeights;
     detectMultiScale(img, foundLocations, foundWeights, hitThreshold, winStride,
@@ -3503,7 +3506,7 @@ public:
 
     void operator()(const Range& range) const CV_OVERRIDE
     {
-        CV_INSTRUMENT_REGION()
+        CV_INSTRUMENT_REGION();
 
         int i, i1 = range.start, i2 = range.end;
 
@@ -3547,7 +3550,7 @@ void HOGDescriptor::detectROI(const cv::Mat& img, const std::vector<cv::Point> &
     CV_OUT std::vector<cv::Point>& foundLocations, CV_OUT std::vector<double>& confidences,
     double hitThreshold, cv::Size winStride, cv::Size padding) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     foundLocations.clear();
     confidences.clear();
@@ -3659,7 +3662,7 @@ void HOGDescriptor::detectMultiScaleROI(const cv::Mat& img,
     CV_OUT std::vector<cv::Rect>& foundLocations, std::vector<DetectionROI>& locations,
     double hitThreshold, int groupThreshold) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     std::vector<Rect> allCandidates;
     Mutex mtx;
@@ -3682,7 +3685,7 @@ void HOGDescriptor::readALTModel(String modelfile)
         String eerr("file not exist");
         String efile(__FILE__);
         String efunc(__FUNCTION__);
-        CV_THROW (Exception(Error::StsError, eerr, efile, efunc, __LINE__));
+        throw Exception(Error::StsError, eerr, efile, efunc, __LINE__);
     }
     char version_buffer[10];
     if (!fread (&version_buffer,sizeof(char),10,modelfl))
@@ -3692,7 +3695,7 @@ void HOGDescriptor::readALTModel(String modelfile)
         String efunc(__FUNCTION__);
         fclose(modelfl);
 
-        CV_THROW (Exception(Error::StsError, eerr, efile, efunc, __LINE__));
+        throw Exception(Error::StsError, eerr, efile, efunc, __LINE__);
     }
     if(strcmp(version_buffer,"V6.01")) {
         String eerr("version does not match");
@@ -3700,14 +3703,14 @@ void HOGDescriptor::readALTModel(String modelfile)
         String efunc(__FUNCTION__);
         fclose(modelfl);
 
-        CV_THROW (Exception(Error::StsError, eerr, efile, efunc, __LINE__));
+        throw Exception(Error::StsError, eerr, efile, efunc, __LINE__);
     }
     /* read version number */
     int version = 0;
     if (!fread (&version,sizeof(int),1,modelfl))
     {
         fclose(modelfl);
-        CV_THROW (Exception());
+        throw Exception();
     }
     if (version < 200)
     {
@@ -3715,7 +3718,7 @@ void HOGDescriptor::readALTModel(String modelfile)
         String efile(__FILE__);
         String efunc(__FUNCTION__);
         fclose(modelfl);
-        CV_THROW (Exception());
+        throw Exception();
     }
     int kernel_type;
     size_t nread;
@@ -3761,7 +3764,7 @@ void HOGDescriptor::readALTModel(String modelfile)
         if(nread != static_cast<size_t>(length) + 1) {
             delete [] linearwt;
             fclose(modelfl);
-            CV_THROW (Exception());
+            throw Exception();
         }
 
         for(int i = 0; i < length; i++)
@@ -3772,14 +3775,14 @@ void HOGDescriptor::readALTModel(String modelfile)
         delete [] linearwt;
     } else {
         fclose(modelfl);
-        CV_THROW (Exception());
+        throw Exception();
     }
     fclose(modelfl);
 }
 
 void HOGDescriptor::groupRectangles(std::vector<cv::Rect>& rectList, std::vector<double>& weights, int groupThreshold, double eps) const
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     if( groupThreshold <= 0 || rectList.empty() )
     {

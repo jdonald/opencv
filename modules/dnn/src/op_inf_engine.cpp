@@ -161,6 +161,7 @@ InfEngineBackendNet::InfEngineBackendNet(InferenceEngine::CNNNetwork& net)
     inputs = net.getInputsInfo();
     outputs = net.getOutputsInfo();
     layers.resize(net.layerCount());  // A hack to execute InfEngineBackendNet::layerCount correctly.
+    netOwner = net;
 }
 
 void InfEngineBackendNet::Release() noexcept
@@ -308,7 +309,7 @@ void InfEngineBackendNet::setTargetDevice(InferenceEngine::TargetDevice device) 
 
 InferenceEngine::TargetDevice InfEngineBackendNet::getTargetDevice() noexcept
 {
-    return targetDevice;
+    return const_cast<const InfEngineBackendNet*>(this)->getTargetDevice();
 }
 
 InferenceEngine::TargetDevice InfEngineBackendNet::getTargetDevice() const noexcept
@@ -330,8 +331,18 @@ InferenceEngine::StatusCode InfEngineBackendNet::setBatchSize(size_t size, Infer
 
 size_t InfEngineBackendNet::getBatchSize() const noexcept
 {
-    CV_Error(Error::StsNotImplemented, "");
-    return 0;
+    size_t batchSize = 0;
+    for (const auto& inp : inputs)
+    {
+        CV_Assert(inp.second);
+        std::vector<size_t> dims = inp.second->getDims();
+        CV_Assert(!dims.empty());
+        if (batchSize != 0)
+            CV_Assert(batchSize == dims.back());
+        else
+            batchSize = dims.back();
+    }
+    return batchSize;
 }
 
 #if INF_ENGINE_VER_MAJOR_GT(INF_ENGINE_RELEASE_2018R2)
@@ -376,6 +387,27 @@ void InfEngineBackendNet::init(int targetId)
             }
         }
         CV_Assert(!inputs.empty());
+
+#if INF_ENGINE_VER_MAJOR_GT(INF_ENGINE_RELEASE_2018R3)
+        for (const auto& inp : inputs)
+        {
+            InferenceEngine::LayerParams lp;
+            lp.name = inp.first;
+            lp.type = "Input";
+            lp.precision = InferenceEngine::Precision::FP32;
+            std::shared_ptr<InferenceEngine::CNNLayer> inpLayer(new InferenceEngine::CNNLayer(lp));
+
+            layers.push_back(inpLayer);
+
+            InferenceEngine::DataPtr dataPtr = inp.second->getInputData();
+            // TODO: remove precision dependency (see setInput.normalization tests)
+            if (dataPtr->precision == InferenceEngine::Precision::FP32)
+            {
+                inpLayer->outData.assign(1, dataPtr);
+                dataPtr->creatorLayer = InferenceEngine::CNNLayerWeakPtr(inpLayer);
+            }
+        }
+#endif
     }
 
     if (outputs.empty())
@@ -442,13 +474,14 @@ void InfEngineBackendNet::init(int targetId)
         initPlugin(*this);
 }
 
+static std::map<InferenceEngine::TargetDevice, InferenceEngine::InferenceEnginePluginPtr> sharedPlugins;
+
 void InfEngineBackendNet::initPlugin(InferenceEngine::ICNNNetwork& net)
 {
     CV_Assert(!isInitialized());
 
     try
     {
-        static std::map<InferenceEngine::TargetDevice, InferenceEngine::InferenceEnginePluginPtr> sharedPlugins;
         auto pluginIt = sharedPlugins.find(targetDevice);
         if (pluginIt != sharedPlugins.end())
         {
@@ -547,13 +580,7 @@ bool InfEngineBackendLayer::getMemoryShapes(const std::vector<MatShape> &inputs,
 bool InfEngineBackendLayer::supportBackend(int backendId)
 {
     return backendId == DNN_BACKEND_DEFAULT ||
-           backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine();
-}
-
-void InfEngineBackendLayer::forward(std::vector<Mat*> &input, std::vector<Mat> &output,
-                                    std::vector<Mat> &internals)
-{
-    CV_Error(Error::StsError, "Choose Inference Engine as a preferable backend.");
+           (backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine());
 }
 
 void InfEngineBackendLayer::forward(InputArrayOfArrays inputs, OutputArrayOfArrays outputs,
@@ -594,4 +621,14 @@ void forwardInfEngine(Ptr<BackendNode>& node)
 #endif  // HAVE_INF_ENGINE
 }
 
+CV__DNN_EXPERIMENTAL_NS_BEGIN
+
+void resetMyriadDevice()
+{
+#ifdef HAVE_INF_ENGINE
+    sharedPlugins.erase(InferenceEngine::TargetDevice::eMYRIAD);
+#endif  // HAVE_INF_ENGINE
+}
+
+CV__DNN_EXPERIMENTAL_NS_END
 }}  // namespace dnn, namespace cv

@@ -156,6 +156,7 @@ void blobFromTensor(const tensorflow::TensorProto &tensor, Mat &dstBlob)
     }
 }
 
+#if 0
 void printList(const tensorflow::AttrValue::ListValue &val)
 {
     std::cout << "(";
@@ -235,6 +236,7 @@ void printLayerAttr(const tensorflow::NodeDef &layer)
         std::cout << std::endl;
     }
 }
+#endif
 
 bool hasLayerAttr(const tensorflow::NodeDef &layer, const std::string &name)
 {
@@ -1948,6 +1950,35 @@ Net readNetFromTensorflow(const std::vector<uchar>& bufferModel, const std::vect
                                   reinterpret_cast<const char*>(&bufferConfig[0]);
     return readNetFromTensorflow(bufferModelPtr, bufferModel.size(),
                                  bufferConfigPtr, bufferConfig.size());
+}
+
+void writeTextGraph(const String& _model, const String& output)
+{
+    String model = _model;
+    const std::string modelExt = model.substr(model.rfind('.') + 1);
+    if (modelExt != "pb")
+        CV_Error(Error::StsNotImplemented, "Only TensorFlow models support export to text file");
+
+    tensorflow::GraphDef net;
+    ReadTFNetParamsFromBinaryFileOrDie(model.c_str(), &net);
+
+    sortByExecutionOrder(net);
+
+    RepeatedPtrField<tensorflow::NodeDef>::iterator it;
+    for (it = net.mutable_node()->begin(); it != net.mutable_node()->end(); ++it)
+    {
+        if (it->op() == "Const")
+        {
+            it->mutable_attr()->at("value").mutable_tensor()->clear_tensor_content();
+        }
+    }
+
+    std::string content;
+    google::protobuf::TextFormat::PrintToString(net, &content);
+
+    std::ofstream ofs(output.c_str());
+    ofs << content;
+    ofs.close();
 }
 
 CV__DNN_EXPERIMENTAL_NS_END

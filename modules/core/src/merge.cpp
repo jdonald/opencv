@@ -228,8 +228,8 @@ static MergeFunc getMergeFunc(int depth)
 namespace cv {
 static bool ipp_merge(const Mat* mv, Mat& dst, int channels)
 {
-#ifdef HAVE_IPP_IW
-    CV_INSTRUMENT_REGION_IPP()
+#ifdef HAVE_IPP_IW_LL
+    CV_INSTRUMENT_REGION_IPP();
 
     if(channels != 3 && channels != 4)
         return false;
@@ -279,7 +279,7 @@ static bool ipp_merge(const Mat* mv, Mat& dst, int channels)
 
 void cv::merge(const Mat* mv, size_t n, OutputArray _dst)
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     CV_Assert( mv && n > 0 );
 
@@ -427,7 +427,7 @@ static bool ocl_merge( InputArrayOfArrays _mv, OutputArray _dst )
 
 void cv::merge(InputArrayOfArrays _mv, OutputArray _dst)
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     CV_OCL_RUN(_mv.isUMatVector() && _dst.isUMat(),
                ocl_merge(_mv, _dst))
